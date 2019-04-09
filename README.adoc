@@ -1,0 +1,63 @@
+:numbered:
+
+= Minimal Audit-framework template
+
+== Introduction
+::
+This template gives an easy way to build audit-messages in a standard (as defined in the configuration) format, where selected fields have to be encrypted. See
+
+* link:https://github.com/mulesoft-consulting/mSquaredCurated/blob/master/mSquaredTaxonomy/7-architectureRealization/2-implementationGovernance/1-standards/auditing/esbMessageAuditStandards.adoc[ESB message-audit standards]
+
+* link:http://blogs.mulesoft.com/dev/training-dev/encrypt-specific-xml-tags-with-the-power-of-dataweave[Encrypt Specific XML Tags With The Power Of DataWeave]
+::
+The pattern is:
+::
+. extract whatever pieces of the message/payload are needed for auditing. Example shows static data being put into a set of flowVars. YMMV
+. build a JSON object-model. The advantage of doing this is that a single DataWeave script can be used to do the next step. A standard JSON model (eg this one) can be setup to hold the mandatory audit-fields (see M^2 ref above).
+. use DataWeave to selectively encrypt some fields (HIPAA, PCI require that any data stored at rest be encrypted. Such strings are safe for logging to regular logs if strings are encrypted. Such strings can be used for auditing as well
+** see the DataWeave script where the variable `keyToEncrypt` is configured
+** this example sets `keyToEncrypt = ['ssn', 'accountNumber', 'thing']`
+. (optional step, but recommended if audit statements end up logging to flat-files (single-line log statements facilitate automated log-parsing). Parse-template to build a single-line log statement
+** If audit-destination will accept JSON, skip step 4
+. dispose the audit-line to whatever audit endpoint needs to receive it.
+
+== Main configurations
+
+
+[cols="a,3a"]
+|====
+| `auditMessage.json`
+| Defines the shape of the audit-message intermediate object-model.
+
+This intermediate object-model can be the final output if JSON is an acceptable format (otherwise, this object-model is used in a  parse-template transformer to build the final output - a single line in this example)
+
+| `bankActivity.format`
+| sample single-line format - defines the shape of the final audit-output line (useful for flat-file audit-logs)
+
+| DataWeave script
+| as included here, does no transformation other than configuration-driven selective field-value encryption.
+
+See `%var keyToEncrypt = ['ssn', 'accountNumber', 'thing']` in the script.
+
+| Encryption
+| This example does simple string-key encryption.
+
+As delivered, this example has the encryption-key set to `1234123412341234` (Base64 encoded). See `($$) : lookup("encryption",$)` in the script.
+|====
+
+== How to run the example
+::
+. open as a POM project
+. start Mule
+. HTTP GET http://localhost:8081/audit/test
+::
+The final audit-line this example returns appears as follows - note encrypted fields:
+====
+`ID: d32081d0-e80d-11e5-91f2-acbc32b40047 | action: doAThing | source: subsidyTracker | agent: ( a value from a place,  value from other place ) | action date-stamp: 2016-03-11T22:49:37.912-06:00[America/Chicago] | secured-fields: (ssn: YTDMkCK/7V+2KpuXkzgWMA==], account#: e8d9KRgjV0V8PehzCMYxcQ==, thing:DKfRMd42N4QHT5TyjVK2P7XAImfht+P9oXDGDwvl4Qh+zByPJvVakzoHvvog4bNQ) ``
+====
+
+== When to use this pattern
+::
+This pattern is useful in industries that *require* certain fields to always be encrypted when stored at rest (credit, health-care, banking etc.) .
+::
+The pattern works only if `flowVars` for these specific fields (eg. Social Security Number in the USA, credit-card numbers, etc.), use the consistent naming that the "keyToEncrypt" pattern relies on.

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:spring="http://www.springframework.org/schema/beans" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" 
+      xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" 
+      xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" 
+      xmlns:encryption="http://www.mulesoft.org/schema/mule/encryption" 
+      xmlns:json="http://www.mulesoft.org/schema/mule/json" 
+      xmlns:http="http://www.mulesoft.org/schema/mule/http" 
+      xmlns="http://www.mulesoft.org/schema/mule/core" 
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" 
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/encryption http://www.mulesoft.org/schema/mule/encryption/current/mule-encryption.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd">
+      
+  <http:listener-config name="httpListener" host="0.0.0.0" port="8081" basePath="audit" doc:name="HTTP Listener Configuration" />
+
+  <encryption:config name="encrypter" doc:name="Encryption" doc:description="key was set to 1234123412341234 - 16 chars long - and Base64 encoded">
+    <encryption:jce-encrypter-config key="MTIzNDEyMzQxMjM0MTIzNA==" />
+  </encryption:config>
+
+    <!--
+    this template gives an easy way to build audit-messages in a mandatory format, where selected fields have to be encrypted. 
+    See
+    1) https://github.com/mulesoft-consulting/mSquaredCurated/blob/master/mSquaredTaxonomy/7-architectureRealization/2-implementationGovernance/1-standards/auditing/esbMessageAuditStandards.adoc
+    2) http://blogs.mulesoft.com/dev/training-dev/encrypt-specific-xml-tags-with-the-power-of-dataweave
+    
+    The pattern is:
+    1) extract whatever pieces of the message/payload are needed for auditing. Example shows static data being put into a set of flowVars. YMMV
+    2) build a JSON object-model. The advantage of doing this is that a single DataWeave script can be used to do the next step. A standard JSON model (eg this one) can be setup to hold the mandatory audit-fields (see M^2 ref above).
+    3) use DataWeave to selectively encrypt some fields (HIPAA, PCI require that any data stored at rest be encrypted. Such strings are safe for logging to regular logs if strings are encrypted. Such strings can be used for auditing as well
+         see the DataWeave script where the variable keyToEncrypt is configured. 
+    4) (optional step, but recommended if audit statements end up logging to flat-files (single-line log statements facilitate automated log-parsing). Parse-template to build a single-line log statement
+            If audit-destination will accept JSON, skip step 4
+    5) dispose the audit-line to whatever audit endpoint needs to receive it.
+    
+    final audit-line in this example:
+    ID: d32081d0-e80d-11e5-91f2-acbc32b40047 | action: doAThing | source: subsidyTracker | agent: ( a value from a place,  example of the example that would work as an example ) | action date-stamp: 2016-03-11T22:49:37.912-06:00[America/Chicago] | secured-fields: (ssn: YTDMkCK/7V+2KpuXkzgWMA==], account#: e8d9KRgjV0V8PehzCMYxcQ==, thing:DKfRMd42N4QHT5TyjVK2P7XAImfht+P9oXDGDwvl4Qh+zByPJvVakzoHvvog4bNQ)
+    
+    This pattern is useful in certain industries (credit, health, banking etc.) *require* certain fields to always be encrypted when stored at rest.
+    The pattern works only if flowVars for these specific fields (eg. Social Security Number in the USA, credit-card numbers, etc.), use the consistent naming that the "keyToEncrypt" pattern relies on. 
+     -->
+
+  <flow name="someFlow">
+    <http:listener config-ref="httpListener" path="test" allowedMethods="GET" doc:name="HTTP" />
+    <message-properties-transformer scope="invocation" doc:name="auditData" doc:description="this is just an example of assembling data from various parts of the message so that it's trivial to build the JSON audit-message object. If you're just auditing an existing JSON message then skip this step.
+
+This example uses static values in the flowVar assignments for simplicity">
+      <add-message-property key="action" value="doAThing" />
+      <add-message-property key="source" value="subsidyTracker" />
+      <add-message-property key="someFieldName" value="a value from a place" />
+      <add-message-property key="otherFieldName" value="value from other place" />
+      <add-message-property key="ssn" value="355-35-3535" />
+      <add-message-property key="accountNumber" value="2505-0555" />
+      <add-message-property key="thing" value="a secure thing" />
+    </message-properties-transformer>
+  
+    <flow-ref name="extractDataEncryptAndSendAudit" doc:name="extractDataEncryptAndSendAudit" />
+  </flow>
+  
+  <sub-flow name="extractDataEncryptAndSendAudit">
+    <parse-template location="auditMessage.json" doc:name="build JSON audit-msg object" />
+    <json:object-to-json-transformer doc:name="JSON object" />
+ 
+    <dw:transform-message metadata:id="615f3052-38c1-43ac-b9e0-8a216842bc3b" doc:name="encrypt selected fields">
+      <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+
+%var keyToEncrypt = ['ssn', 'accountNumber', 'thing']
+
+%function encrypt(val) lookup("encryption",val)
+
+%function needsEncrypt(key) (sizeOf (keyToEncrypt find key)) > 0
+
+%function maskSensitiveData(value) value mapObject (
+  {
+    ($$):maskSensitiveData($) when $ is :object otherwise (maskArray($) 
+      when $ is :array otherwise $) unless needsMasking($$ as :string) 
+    otherwise maskValue($)
+  }
+)
+%function maskArray(value) value map maskSensitiveData($)
+---
+
+maskSensitiveData(payload)]]></dw:set-payload>
+    </dw:transform-message>
+    
+    <json:json-to-object-transformer returnClass="java.util.Map" doc:name="toMap" />
+    
+    <parse-template location="templates/bankActivity.format" doc:name="buildFinalAuditMsg" doc:description="puts the data into the final audit-message string. If you're auditing with the JSON then skip this step" />
+    
+    <flow-ref name="auditMessageSink" doc:name="auditMessageSink" doc:description="demo audit-sink" />
+  </sub-flow>
+  
+  <flow name="encryption" doc:description="flow handles the encryption of the selected values - see DataWeave script">
+    <encryption:encrypt config-ref="encrypter" doc:name="Encryption" />
+  </flow>
+  
+  <flow name="auditMessageSink">
+    <logger message="#[message.payloadAs(java.lang.String)]" level="INFO" doc:name="Logger" />
+  </flow>
+</mule>

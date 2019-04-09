@@ -1,0 +1,13 @@
+{
+  "corrID": "38037ba0-e7d9-11e5-a314-acbc32b40047",
+  "actionData": {
+    "action": "doAThing",
+    "source": "subsidyTracker"
+  },
+  "agentID": {
+    "someFieldName": "a value from a place",
+    "otherFieldName": " example of the example that would work as an example"
+  },
+  "timeStamp": "2016-03-11T16:33:03.887-06:00[America/Chicago]",
+  "secure": "LAnHfFya9P8o54n2RJcquDY3o7B79e6Df7R/YYU+fG8BIYror/cbaf/YKOyXsWC3cX/kX7vOpP3YeHZIzK+HAg=="
+}

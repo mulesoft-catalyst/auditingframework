@@ -1,0 +1,17 @@
+{
+   "corrID":"#[message.id]",
+   "actionData":{
+      "action":"#[flowVars['action']]",
+      "source":"#[flowVars['source']]"
+   },
+   "agentID":{
+      "someFieldName":"#[flowVars['someFieldName']]",
+      "otherFieldName":"#[flowVars['otherFieldName']]"
+   },
+   "timeStamp":"#[java.time.ZonedDateTime.now().toString()]",
+   "secure":{
+      "ssn":"#[flowVars['ssn']]",
+      "accountNumber":"#[flowVars['accountNumber']]",
+      "thing":"special#[message.id]"
+   }
+}

@@ -1,0 +1,1 @@
+ID: #[payload.corrID] | action: #[payload.actionData.action] | source: #[payload.actionData.source] | agent: ( #[payload.agentID.someFieldName], #[payload.agentID.otherFieldName] ) | action date-stamp: #[payload.timeStamp] | secured-fields: (ssn: #[payload.secure.ssn]], account#: #[payload.secure.accountNumber], thing:#[payload.secure.thing])  
